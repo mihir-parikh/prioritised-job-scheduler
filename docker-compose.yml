@@ -1,0 +1,7 @@
+services:
+  scheduler-test:
+    build: .
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: npm run test:watch
