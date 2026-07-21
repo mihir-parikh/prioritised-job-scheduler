@@ -6,7 +6,7 @@
         "test": "vitest run", 
         "build": "tsc", 
         "typecheck": "tsc --noEmit", 
-        "test:watch": "vitest"
+        "test:watch": "vitest watch"
     },
     "keywords": [],
     "author": "",
