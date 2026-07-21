@@ -40,14 +40,17 @@ class Scheduler {
             if (!next) break;
 
             this.activeJobs++;
+            // Executor will be provided by the caller
             next.job.executor
                 .execute()
                 .then(
+                    // Resolve the pending promise when execution is complete
                     () => next.resolve(),
                     (error) => next.reject(error)
                 )
                 .finally(() => {
                     this.releaseSlot();
+                    // A slot is available, so we can try to dispatch the next job
                     this.dispatch();
                 });
         }
