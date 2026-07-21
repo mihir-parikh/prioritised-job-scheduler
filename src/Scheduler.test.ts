@@ -2,6 +2,16 @@ import { describe, it, expect } from "vitest";
 import { Scheduler } from "./Scheduler.js";
 import { Job, JobPriority, JobExecutor } from "./types.js";
 
+// A promise that does NOT finish on its own -- you get a `resolve` function
+// back and decide yourself, later, when to call it.
+function createDeferred() {
+    let resolve!: () => void;
+    const promise = new Promise<void>((res) => {
+        resolve = res;
+    });
+    return { promise, resolve };
+}
+
 function flushMicrotasks(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -12,17 +22,19 @@ describe("Scheduler", () => {
 
         let active = 0;
         let peak = 0;
-        const resolvers: Array<() => void> = [];
+        const finishJob: Array<() => void> = []; // one "finish button" per started job
 
         const executor: JobExecutor = {
             execute: () => {
                 active++;
                 peak = Math.max(peak, active);
-                return new Promise<void>((resolve) => {
-                    resolvers.push(() => {
-                        active--;
-                        resolve();
-                    });
+
+                const deferred = createDeferred();
+                finishJob.push(deferred.resolve);
+
+                // active only goes back down once this job's finish button is pressed.
+                return deferred.promise.then(() => {
+                    active--;
                 });
             },
         };
@@ -34,10 +46,11 @@ describe("Scheduler", () => {
         await flushMicrotasks();
         expect(peak).toBe(10);
         expect(active).toBe(10);
-        expect(resolvers.length).toBe(10);
+        expect(finishJob.length).toBe(10);
 
-        while (resolvers.length > 0) {
-            resolvers.shift()!();
+        while (finishJob.length > 0) {
+            const finish = finishJob.shift()!;
+            finish();
             await flushMicrotasks();
             expect(peak).toBeLessThanOrEqual(10);
         }
@@ -48,23 +61,27 @@ describe("Scheduler", () => {
     it("starts a high priority job before an earlier-submitted low priority job once a slot frees", async () => {
         const scheduler = new Scheduler();
 
-        const fillerResolvers: Array<() => void> = [];
+        const finishFillerJob: Array<() => void> = [];
         const fillerExecutor: JobExecutor = {
-            execute: () => new Promise<void>((resolve) => fillerResolvers.push(resolve)),
+            execute: () => {
+                const deferred = createDeferred();
+                finishFillerJob.push(deferred.resolve);
+                return deferred.promise;
+            },
         };
 
         for (let i = 0; i < 10; i++) {
             scheduler.submit({ priority: JobPriority.MEDIUM, executor: fillerExecutor });
         }
         await flushMicrotasks();
-        expect(fillerResolvers.length).toBe(10);
+        expect(finishFillerJob.length).toBe(10);
 
         const startOrder: string[] = [];
 
         const lowExecutor: JobExecutor = {
             execute: () => {
                 startOrder.push("low");
-                return new Promise<void>(() => {});
+                return new Promise<void>(() => {}); // never finishes -- doesn't matter here
             },
         };
         const highExecutor: JobExecutor = {
@@ -81,7 +98,7 @@ describe("Scheduler", () => {
         expect(startOrder).toEqual([]);
 
         // Free exactly one slot.
-        fillerResolvers.shift()!();
+        finishFillerJob.shift()!();
         await flushMicrotasks();
 
         // High started despite arriving after Low.
