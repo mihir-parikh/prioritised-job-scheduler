@@ -68,11 +68,9 @@ Other scripts (run via `npm run <script>` inside the container, or `docker compo
 
 ## Design notes
 
-- No persistence — job state lives in memory only. Nothing in the requirements calls
-  for surviving a process restart, so a database would be unnecessary complexity.
+- No persistence — job state lives in memory only. 
 - No external queue infrastructure (e.g. Redis/BullMQ) — the whole scheduler runs
-  in-process, so a plain in-memory queue is sufficient; there's no distributed or
-  multi-process use case here.
+  in-process, so a plain in-memory queue is sufficient.
 - Priority is implemented as three FIFO buckets (`High`/`Medium`/`Low`) rather than a
   general-purpose priority heap — simpler, and gives correct FIFO-within-priority
   ordering for free.
